@@ -51,12 +51,12 @@ def avaliar_leitura(leitura: dict) -> str:
     return "dentro_da_especificacao" if dentro_do_padrao else "fora_da_especificacao"
 
 
-def montar_task(status: str, leitura: dict) -> Task:
+def montar_task(status: str, leitura: dict, recebido_em: str) -> Task:
     contexto = (
         f"Sensor: {leitura['sensor']}\n"
         f"Valor lido: {leitura['valor']} {leitura['unidade']}\n"
         f"Faixa aceitável: {FAIXA_MIN}-{FAIXA_MAX} {leitura['unidade']}\n"
-        f"Horário da leitura: {leitura['timestamp']}"
+        f"Horário do recebimento: {recebido_em}"
     )
 
     if status == "fora_da_especificacao":
@@ -83,12 +83,12 @@ def montar_task(status: str, leitura: dict) -> Task:
     )
 
 
-def salvar_relatorio(status: str, leitura: dict, resultado: str) -> str:
+def salvar_relatorio(status: str, leitura: dict, recebido_em: str, agora: str, resultado: str) -> str:
     os.makedirs(PASTA_RELATORIOS, exist_ok=True)
 
     sufixo = "sustentacao" if status == "fora_da_especificacao" else "direcao"
-    agora = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    caminho = os.path.join(PASTA_RELATORIOS, f"{agora}_{sufixo}.md")
+    nome_arquivo = agora.replace(":", "-").replace(" ", "_")
+    caminho = os.path.join(PASTA_RELATORIOS, f"{nome_arquivo}_{sufixo}.md")
 
     destinatario = "Equipe de Sustentação" if status == "fora_da_especificacao" else "Direção"
     conteudo = (
@@ -97,6 +97,7 @@ def salvar_relatorio(status: str, leitura: dict, resultado: str) -> str:
         f"- Sensor: {leitura['sensor']}\n"
         f"- Valor lido: {leitura['valor']} {leitura['unidade']}\n"
         f"- Faixa aceitável: {FAIXA_MIN}-{FAIXA_MAX} {leitura['unidade']}\n"
+        f"- Horário do recebimento: {recebido_em}\n"
         f"- Status: {status}\n\n"
         f"---\n\n"
         f"{resultado}\n"
@@ -110,16 +111,18 @@ def salvar_relatorio(status: str, leitura: dict, resultado: str) -> str:
 
 def processar_leitura(leitura: dict) -> None:
     status = avaliar_leitura(leitura)
+    agora_dt = datetime.now()
+    recebido_em = agora_dt.strftime("%d/%m/%Y %H:%M:%S")
     print(f"\n[LEITURA] {leitura} -> status: {status}")
 
-    task = montar_task(status, leitura)
+    task = montar_task(status, leitura, recebido_em)
     crew = Crew(agents=[task.agent], tasks=[task], verbose=True)
     resultado = crew.kickoff()
 
     destinatario = "equipe de sustentação" if status == "fora_da_especificacao" else "direção"
     print(f"\n[RELATÓRIO -> {destinatario}]\n{resultado}\n")
 
-    caminho = salvar_relatorio(status, leitura, str(resultado))
+    caminho = salvar_relatorio(status, leitura, recebido_em, agora_dt.strftime("%Y-%m-%d_%H-%M-%S"), str(resultado))
     print(f"[SALVO EM] {caminho}\n")
 
 
