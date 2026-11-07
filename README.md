@@ -1,41 +1,48 @@
-# CP01 - Edge com Agentes de IA
+# Agentes de IA com ESP32 e MQTT
 
-Aplicação que usa **CrewAI** para receber dados de um sensor (mockado) conectado a um
-**ESP32** via **MQTT** e decidir automaticamente para quem enviar um relatório:
+Um sensor de temperatura de rack publica leituras via **MQTT**, e um agente **CrewAI** decide sozinho para quem escrever o relatório: a **equipe de sustentação** quando o valor sai da faixa, ou a **direção** quando está tudo certo.
 
-- Se o dado estiver **fora da especificação** → relatório técnico para a **equipe de sustentação**
-  (desvio, causas prováveis e ação recomendada).
-- Se o dado estiver **dentro da especificação** → relatório executivo para a **direção**
-  (status da operação e impacto positivo).
+```mermaid
+flowchart LR
+    A["ESP32<br/>sensor mockado"] -->|"MQTT (HiveMQ)<br/>a cada 10 s"| B["main.py<br/>avalia a faixa 18 a 27 °C"]
+    B -->|"fora da faixa"| C["Agente de Sustentação<br/>relatório técnico"]
+    B -->|"dentro da faixa"| D["Agente de Performance<br/>relatório executivo"]
+    C --> E["relatorios/"]
+    D --> E
+```
 
-## Integrantes
+## O que ele faz
 
-- André Ayello de Nobrega — RM561754
-- Caio Castelão Carminato — RM563630
-- Guilherme Vasques Tamai — RM563276
-- Mirella Mascarenhas — RM562092
-- Vitor Komura de Freitas — RM563694
+1. O **ESP32** ([`esp32_sensor_mock.ino`](esp32_sensor_mock/esp32_sensor_mock.ino)) conecta ao WiFi e publica uma leitura mockada de temperatura a cada 10 s no tópico `fiap/cp01/rack/temperatura`, no broker público `broker.hivemq.com`.
+2. O **`main.py`** assina o tópico, recebe cada leitura e verifica se o valor está entre 18,0 °C e 27,0 °C.
+3. Um agente CrewAI escreve o relatório certo para o público certo:
+   - **fora da faixa:** *Engenheiro de Sustentação de Infraestrutura*, com desvio, causas prováveis e ação recomendada;
+   - **dentro da faixa:** *Analista de Performance de Infraestrutura*, com status da operação e impacto positivo.
+4. O relatório é salvo em [`relatorios/`](relatorios), com data, hora, dados da leitura e o texto gerado.
 
-## Como funciona
+Sem o ESP32 físico, o [`sensor_publisher.py`](sensor_publisher.py) publica leituras mockadas direto do computador e permite testar o fluxo de ponta a ponta.
 
-1. **ESP32** ([`esp32_sensor_mock/esp32_sensor_mock.ino`](esp32_sensor_mock/esp32_sensor_mock.ino)) conecta ao WiFi e simula um
-   sensor de temperatura de rack de servidor, publicando uma leitura mockada a cada 10s via
-   MQTT no broker público HiveMQ (`broker.hivemq.com`), no tópico `fiap/cp01/rack/temperatura`.
-2. **`main.py`** assina esse tópico, recebe cada leitura e avalia se o valor está dentro da
-   faixa aceitável (18,0°C a 27,0°C).
-3. Um agente **CrewAI** é acionado para escrever o relatório certo para o público certo:
-   - fora da faixa → *Engenheiro de Sustentação de Infraestrutura*
-   - dentro da faixa → *Analista de Performance de Infraestrutura*
-4. O relatório é salvo em [`relatorios/`](relatorios) com data, hora, dados da leitura e o texto gerado.
+## Exemplo de saída
 
-Um script alternativo, [`sensor_publisher.py`](sensor_publisher.py), publica leituras mockadas direto do
-computador (sem precisar do ESP32 físico), útil para testar o fluxo de ponta a ponta.
+Trecho de um relatório real para a equipe de sustentação, gerado com uma leitura de 29,0 °C (arquivo completo em [`relatorios/2026-08-30_13-11-51_sustentacao.md`](relatorios/2026-08-30_13-11-51_sustentacao.md)):
+
+> **Desvio:** o sensor de temperatura do rack apresentou leitura fora da faixa aceitável, registrando 29.0°C às 08:40, acima do limite máximo estabelecido de 27.0°C.
+>
+> **Causas prováveis:** falha ou insuficiência na climatização local; acúmulo de poeira ou obstrução das entradas de ar; sobrecarga de equipamentos no rack; sensor com possível falha ou calibragem incorreta.
+>
+> **Ação recomendada:** verificar a climatização, inspecionar e limpar o rack, analisar a carga dos equipamentos, conferir a calibração do sensor e monitorar em intervalos curtos.
 
 ## Tecnologias
 
 - Python 3.13, [CrewAI](https://www.crewai.com/), `paho-mqtt`, `python-dotenv`
-- ESP32 (Arduino IDE), bibliotecas `WiFi.h` e `PubSubClient`
+- ESP32 (Arduino IDE) com as bibliotecas `WiFi.h` e `PubSubClient`
 - Broker MQTT público HiveMQ
+
+## Limitações
+
+- O sensor é **simulado**: o ESP32 publica valores de exemplo, não lê um sensor real.
+- Precisa de uma chave da OpenAI para o agente gerar os relatórios.
+- O broker HiveMQ é público e sem autenticação, adequado para a demonstração e não para produção.
 
 ## Como rodar
 
@@ -77,7 +84,7 @@ uv run python main.py
 ## Estrutura
 
 ```
-agentes-b2b/
+.
 ├── main.py                          # App CrewAI que escuta o MQTT e gera os relatórios
 ├── sensor_publisher.py              # Publisher mockado alternativo (sem ESP32 físico)
 ├── esp32_sensor_mock/
@@ -85,3 +92,7 @@ agentes-b2b/
 │   └── arduino_secrets.h            # Credenciais de WiFi (não versionado)
 └── relatorios/                      # Relatórios gerados pelo agente, um arquivo por leitura
 ```
+
+## Time
+
+Projeto de Edge Computing, FIAP. André Nobrega, Caio Carminato, Guilherme Tamai, Mirella Mascarenhas e Vitor Komura.
